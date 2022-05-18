@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns, CPP, FlexibleInstances, KindSignatures,
              ScopedTypeVariables, TypeOperators,
-             MultiParamTypeClasses, GADTs, FlexibleContexts #-}
+             MultiParamTypeClasses, GADTs, FlexibleContexts, QuantifiedConstraints, UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE Trustworthy #-}
 
@@ -25,6 +25,8 @@ import Data.Kind (Type)
 #else
 #define Type *
 #endif
+
+import GHC.Types (Total, type(@))
 
 
 -- Type without constructors
@@ -101,10 +103,13 @@ class SumSize f => GSum arity f where
 -- would be better performing CPU and hash-quality wise (assuming that
 -- Integer's Hashable is of high quality).
 --
-instance (GSum arity a, GSum arity b) => GHashable arity (a :+: b) where
+instance (
+  Total a,
+  Total b,
+  GSum arity a, GSum arity b) => GHashable arity (a :+: b) where
     ghashWithSalt toHash salt = hashSum toHash salt 0
 
-instance (GSum arity a, GSum arity b) => GSum arity (a :+: b) where
+instance (Total a, Total b, GSum arity a, GSum arity b) => GSum arity (a :+: b) where
     hashSum toHash !salt !index s = case s of
         L1 x -> hashSum toHash salt index x
         R1 x -> hashSum toHash salt (index + sizeL) x
@@ -112,7 +117,12 @@ instance (GSum arity a, GSum arity b) => GSum arity (a :+: b) where
         sizeL = unTagged (sumSize :: Tagged a)
     {-# INLINE hashSum #-}
 
-instance GHashable arity a => GSum arity (C1 c a) where
+instance (
+  Total a,
+  Total (HashArgs arity),
+  HashArgs @ arity,
+  -- Total HashArgs,
+  GHashable arity a) => GSum arity (C1 c a) where
     hashSum toHash !salt !index (M1 x) = ghashWithSalt toHash (hashWithSalt salt index) x
     {-# INLINE hashSum #-}
 

@@ -1,7 +1,8 @@
 {-# LANGUAGE BangPatterns, CPP, MagicHash,
              ScopedTypeVariables, UnliftedFFITypes, DeriveDataTypeable,
-             DefaultSignatures, FlexibleContexts, TypeFamilies,
-             MultiParamTypeClasses, CApiFFI #-}
+             DefaultSignatures, FlexibleContexts, TypeFamilies, TypeOperators,
+             QuantifiedConstraints,
+             MultiParamTypeClasses, CApiFFI, PartialTypeConstructors, UndecidableInstances #-}
 
 {-# LANGUAGE Trustworthy #-}
 
@@ -96,6 +97,8 @@ import qualified Data.Tree as Tree
 
 -- As we use qualified F.Foldable, we don't get warnings with newer base
 import qualified Data.Foldable as F
+
+import GHC.Types (WDT, type(@), Total)
 
 #if MIN_VERSION_base(4,7,0)
 import Data.Proxy (Proxy)
@@ -283,14 +286,20 @@ class Eq a => Hashable a where
     hash :: a -> Int
     hash = hashWithSalt defaultSalt
 
-    default hashWithSalt :: (Generic a, GHashable Zero (Rep a)) => Int -> a -> Int
+    default hashWithSalt :: (
+      forall x. Rep a @ x,
+      Generic a,
+      GHashable Zero (Rep a)) => Int -> a -> Int
     hashWithSalt = genericHashWithSalt
     {-# INLINE hashWithSalt #-}
 
 -- | Generic 'hashWithSalt'.
 --
 -- @since 1.3.0.0
-genericHashWithSalt :: (Generic a, GHashable Zero (Rep a)) => Int -> a -> Int
+genericHashWithSalt :: (
+  forall x. Rep a @ x, -- need to do this as `Total (Rep a)` won't do.
+  Generic a,
+  GHashable Zero (Rep a)) => Int -> a -> Int
 genericHashWithSalt = \salt -> ghashWithSalt HashArgs0 salt . from
 {-# INLINE genericHashWithSalt #-}
 
@@ -302,21 +311,28 @@ data instance HashArgs Zero a = HashArgs0
 newtype instance HashArgs One  a = HashArgs1 (Int -> a -> Int)
 
 -- | The class of types that can be generically hashed.
-class GHashable arity f where
+class Total f => GHashable arity f where
     ghashWithSalt :: HashArgs arity a -> Int -> f a -> Int
 
-class Eq1 t => Hashable1 t where
+class (Total t, Eq1 t) => Hashable1 t where
     -- | Lift a hashing function through the type constructor.
     liftHashWithSalt :: (Int -> a -> Int) -> Int -> t a -> Int
 
-    default liftHashWithSalt :: (Generic1 t, GHashable One (Rep1 t)) => (Int -> a -> Int) -> Int -> t a -> Int
+    default liftHashWithSalt :: (
+      forall x. Rep1 t @ x,
+      Generic1 t,
+      GHashable One (Rep1 t)) => (Int -> a -> Int) -> Int -> t a -> Int
     liftHashWithSalt = genericLiftHashWithSalt
     {-# INLINE liftHashWithSalt #-}
 
 -- | Generic 'liftHashWithSalt'.
 --
 -- @since 1.3.0.0
-genericLiftHashWithSalt :: (Generic1 t, GHashable One (Rep1 t)) => (Int -> a -> Int) -> Int -> t a -> Int
+genericLiftHashWithSalt :: (
+  forall x. Rep1 t @ x,
+  WDT (Rep1 t),
+  Generic1 t,
+  GHashable One (Rep1 t)) => (Int -> a -> Int) -> Int -> t a -> Int
 genericLiftHashWithSalt = \h salt -> ghashWithSalt (HashArgs1 h) salt . from1
 {-# INLINE genericLiftHashWithSalt #-}
 
