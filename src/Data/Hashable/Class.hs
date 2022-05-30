@@ -98,7 +98,7 @@ import qualified Data.Tree as Tree
 -- As we use qualified F.Foldable, we don't get warnings with newer base
 import qualified Data.Foldable as F
 
-import GHC.Types (WDT, type(@), Total)
+import GHC.Types (type(@), Total)
 
 #if MIN_VERSION_base(4,7,0)
 import Data.Proxy (Proxy)
@@ -297,7 +297,9 @@ class Eq a => Hashable a where
 --
 -- @since 1.3.0.0
 genericHashWithSalt :: (
+#if MIN_VERSION_base(4,16,0)
   forall x. Rep a @ x, -- need to do this as `Total (Rep a)` won't do.
+#endif
   Generic a,
   GHashable Zero (Rep a)) => Int -> a -> Int
 genericHashWithSalt = \salt -> ghashWithSalt HashArgs0 salt . from
@@ -310,16 +312,31 @@ data family HashArgs arity a :: Type
 data instance HashArgs Zero a = HashArgs0
 newtype instance HashArgs One  a = HashArgs1 (Int -> a -> Int)
 
+#if MIN_VERSION_base(4,16,0)
+type instance HashArgs @ a = ()
+type instance HashArgs a @ b = ()
+#endif
+
 -- | The class of types that can be generically hashed.
-class Total f => GHashable arity f where
+class
+#if MIN_VERSION_base(4,16,0)
+   Total f =>
+#endif
+  GHashable arity f where
     ghashWithSalt :: HashArgs arity a -> Int -> f a -> Int
 
-class (Total t, Eq1 t) => Hashable1 t where
+class (
+#if MIN_VERSION_base(4,16,0)
+    Total t,
+#endif
+  Eq1 t) => Hashable1 t where
     -- | Lift a hashing function through the type constructor.
     liftHashWithSalt :: (Int -> a -> Int) -> Int -> t a -> Int
 
     default liftHashWithSalt :: (
+#if MIN_VERSION_base(4,16,0)
       forall x. Rep1 t @ x,
+#endif
       Generic1 t,
       GHashable One (Rep1 t)) => (Int -> a -> Int) -> Int -> t a -> Int
     liftHashWithSalt = genericLiftHashWithSalt
@@ -329,8 +346,9 @@ class (Total t, Eq1 t) => Hashable1 t where
 --
 -- @since 1.3.0.0
 genericLiftHashWithSalt :: (
+#if MIN_VERSION_base(4,16,0)
   forall x. Rep1 t @ x,
-  WDT (Rep1 t),
+#endif
   Generic1 t,
   GHashable One (Rep1 t)) => (Int -> a -> Int) -> Int -> t a -> Int
 genericLiftHashWithSalt = \h salt -> ghashWithSalt (HashArgs1 h) salt . from1

@@ -26,7 +26,7 @@ import Data.Kind (Type)
 #define Type *
 #endif
 
-import GHC.Types (Total, type(@))
+import GHC.Types (Total)
 
 
 -- Type without constructors
@@ -58,7 +58,11 @@ instance Hashable1 f => GHashable One (Rec1 f) where
 instance (Hashable1 f, GHashable One g) => GHashable One (f :.: g) where
     ghashWithSalt targs salt = liftHashWithSalt (ghashWithSalt targs) salt . unComp1
 
-class SumSize f => GSum arity f where
+class (
+#if MIN_VERSION_base(4,16,0)
+  Total f, 
+#endif
+  SumSize f) => GSum arity f where
     hashSum :: HashArgs arity a -> Int -> Int -> f a -> Int
     -- hashSum args salt index value = ...
 
@@ -103,13 +107,10 @@ class SumSize f => GSum arity f where
 -- would be better performing CPU and hash-quality wise (assuming that
 -- Integer's Hashable is of high quality).
 --
-instance (
-  Total a,
-  Total b,
-  GSum arity a, GSum arity b) => GHashable arity (a :+: b) where
+instance (GSum arity a, GSum arity b) => GHashable arity (a :+: b) where
     ghashWithSalt toHash salt = hashSum toHash salt 0
 
-instance (Total a, Total b, GSum arity a, GSum arity b) => GSum arity (a :+: b) where
+instance (GSum arity a, GSum arity b) => GSum arity (a :+: b) where
     hashSum toHash !salt !index s = case s of
         L1 x -> hashSum toHash salt index x
         R1 x -> hashSum toHash salt (index + sizeL) x
@@ -117,12 +118,7 @@ instance (Total a, Total b, GSum arity a, GSum arity b) => GSum arity (a :+: b) 
         sizeL = unTagged (sumSize :: Tagged a)
     {-# INLINE hashSum #-}
 
-instance (
-  Total a,
-  Total (HashArgs arity),
-  HashArgs @ arity,
-  -- Total HashArgs,
-  GHashable arity a) => GSum arity (C1 c a) where
+instance GHashable arity a => GSum arity (C1 c a) where
     hashSum toHash !salt !index (M1 x) = ghashWithSalt toHash (hashWithSalt salt index) x
     {-# INLINE hashSum #-}
 
